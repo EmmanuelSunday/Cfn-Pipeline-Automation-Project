@@ -1,40 +1,34 @@
-Description:
-  This template creates IAM users
-
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template deploys IAM groups, users, instanceprofile and SSM role
 Parameters:
+  OwnerName:
+    Description: The name that is prefixed to resource names
+    Type: String
+    Default: nas
+  
   User:
     NoEcho: 'false'
-    Type: List<String>
+    Type: String
     Description: New user name
-    Default:
-      - User1
-      - User2
-      - User3
-    # MinLength: '4'
-    # MaxLength: '10'
-    # ConstraintDescription: Must be a comma separated list of IAM User names (user1,user2,user3)
+    Default: User1
+    MinLength: '4'
+    MaxLength: '10'
+    ConstraintDescription: Must be a comma separated list of IAM User names (user1,user2,user3)
     
 
   Password:
     NoEcho: 'true'
     Type: String
     Description: New account password
-    MinLength: '1'
-    MaxLength: '41'
-    ConstraintDescription: the password must be between 1 and 41 characters
-  
-  # UserGroup:
-  #   Type: List
-  #   AllowedValues:
-  #     - Engineering_Team1
-  #     - Security_Team1
-  #     - Operations_Team1
+    MinLength: '6'
+    MaxLength: '15'
+    ConstraintDescription: the password must be between 1 and 15 characters
 
 Resources:
   MyIamGroup:
     Type: AWS::IAM::Group
     Properties:
-      GroupName: Engineering_Team2
+      GroupName: !Sub ${OwnerName}_Engineering_Team
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AdministratorAccess
       Path: /
@@ -47,7 +41,33 @@ Resources:
                 Action: "aws-portal:*"
                 Resource: "*"
 
-  CFNUser:
+  MyIamGroup2:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub ${OwnerName}_Security_Team
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  MyIamGroup3:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub ${OwnerName}_Operations_Team
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Path: /
+      Policies:
+        - PolicyName: AllowUSEast1Only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Deny
+                Action: "*"
+                Resource: "*"
+                Condition:
+                  StringNotLike:
+                    aws:RequestedRegion: us-east-1
+
+  NasUser:
     Type: AWS::IAM::User
     Properties:
       Groups: 
@@ -57,8 +77,48 @@ Resources:
         PasswordResetRequired: 'true'
       UserName: !Ref User
 
-# https://iam.amazonaws.com/?Action=ChangePassword
-# &OldPassword=U79}kgds4?
-# &NewPassword=Lb0*1(9xpN
-# &Version=2010-05-08
-# &AUTHPARAMS
+  NasSSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: ec2-ssm role for accessing the ec2-instance
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      RoleName: !Sub ${OwnerName}-ec2-ssm
+
+  MyIamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: IamInstanceProfile
+      Path: "/"
+      Roles:
+        - !Ref NasSSMRole
+
+Outputs:
+  NasSSMRole:
+    Description: A reference to the MyIamInstanceProfile role
+    Value: !Ref NasSSMRole
+    Export:
+      Name: !Sub '${AWS::StackName}-NasSSMRole'
+
+  MyIamInstanceProfile:
+    Description: A reference to the MyIamInstanceProfile role
+    Value: !Ref MyIamInstanceProfile
+    Export:
+      Name: !Sub '${AWS::StackName}-MyIamInstanceProfile'
+
+  MyIamInstanceProfile2:
+    Description: A reference to the MyIamInstanceProfile role
+    Value: !GetAtt MyIamInstanceProfile.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-Arn'
+
